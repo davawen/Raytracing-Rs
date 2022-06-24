@@ -70,8 +70,8 @@ impl<'a> Bvh<'a> {
             shape.ray_intersection(ray)
         }
         else {
-            self.lhs.as_ref().unwrap().intersects(ray).or(
-                self.rhs.as_ref().unwrap().intersects(ray)
+            self.lhs.as_ref().unwrap().intersects(ray).or_else(
+                || self.rhs.as_ref().unwrap().intersects(ray)
             )
         }
     }
