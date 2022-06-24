@@ -1,87 +1,72 @@
-use std::{io::{ Write, Result as IOResult }, fs::File, error::Error, slice::from_raw_parts};
+use std::{fs::File, error::Error};
+use glam::Vec3;
 
-#[derive(Default, Clone, Copy, Debug)]
-struct Pixel(u8, u8, u8);
+mod shape;
+mod bvh;
+mod canvas;
+mod intersection;
 
-impl Pixel {
-    pub const WHITE: Pixel = Pixel::gray(255);
-    pub const BLACK: Pixel = Pixel::gray(0);
+use canvas::*;
+use intersection::Intersection;
+use rand::{thread_rng, Rng};
+use shape::*;
+use bvh::Bvh;
 
-    const fn gray(v: u8) -> Self {
-        Pixel( v, v, v )
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        unsafe {
-            let this: *const u8 = &self.0;
-            from_raw_parts(this, 3)
-        }
-    }
-}
-
-struct Canvas {
-    width: usize,
-    height: usize,
-    data: Vec<Pixel>
-}
-
-impl Canvas {
-    fn new(width: usize, height: usize) -> Self {
-        Canvas {
-            width,
-            height,
-            data: vec![ Pixel::default(); width * height ]
-        }
-    }
-
-    fn flat_pixels(&self) -> &[u8] {
-        unsafe {
-            let data: *const u8 = self.data.get(0).unwrap().as_slice().as_ptr();
-
-            from_raw_parts(data, self.data.len() * 3)
-        }
-    }
-
-    fn write_to(&self, file: &mut File) -> IOResult<()> {
-        writeln!(file, "P6\n{} {}\n255", self.width, self.height)?;
-
-        file.write_all( self.flat_pixels() )?;
-
-        Ok(())
-    }
-
-    fn set(&mut self, x: usize, y: usize, p: Pixel) {
-        self.data[y * self.width + x] = p;
-    }
-
-    fn get(&self, x: usize, y: usize) -> &Pixel {
-        &self.data[y * self.width + x]
-    }
-
-    fn draw_circle(&mut self, x: f32, y: f32, radius: f32) {
-        let uradius = radius.ceil() as usize;
-        let ux = x as usize;
-        let uy = y as usize;
-
-        for cell_y in uy.saturating_sub(uradius)..=uy+uradius {
-            for cell_x in ux.saturating_sub(uradius)..=ux+uradius {
-                let fcell_x = cell_x as f32;
-                let fcell_y = cell_y as f32;
-
-                if (fcell_x - x)*(fcell_x - x) + (fcell_y - y)*(fcell_y - y) <= radius*radius {
-                    self.set(cell_x, cell_y, Pixel::WHITE)
-                }
-            }
-        }
-    }
-}
+use crate::intersection::Traceable;
 
 fn main() -> Result<(), Box<dyn Error>> {
 
     let mut canvas = Canvas::new(1920, 1080);
 
-    canvas.draw_circle(100.0, 100.0, 101.0);
+    let mut shapes: Vec<Box<dyn Traceable>> = Vec::new();
+    
+    macro_rules! rng {
+        ($e:expr) => {
+            thread_rng().gen_range($e)
+        }
+    }
+    
+    for _ in 0..2000 {
+        shapes.push(
+            Box::new(
+                Sphere { 
+                    pos: Vec3::new( rng!(0.0..canvas.width() as f32), rng!(0.0..canvas.height() as f32), 0.0 ),
+                    radius: rng!(3.0..10.0)
+                } 
+            )
+        )
+    }
+    
+    // 
+    // for shape in &shapes {
+    //     canvas.draw(shape.as_ref(), Pixel(0, 255, 0));
+    // }
+    // 
+    // canvas.draw(&bvh, thread_rng().gen());
 
+    let bvh = Bvh::construct(shapes.iter().map(Box::as_ref).collect::<Vec<_>>().as_mut_slice(), 0);
+
+    let mut results = vec![false; 2000];
+
+    for _ in 0..(canvas.width()*canvas.height()) {
+        let ray = Ray {
+            start: Vec3::new(rng!(0.0..canvas.width() as f32), rng!(0.0..canvas.height() as f32), 0.0),
+            dir: Vec3::new(thread_rng().gen(), thread_rng().gen(), 0.0).normalize()
+        };
+
+        results[0] = bvh.intersects(&ray).is_some();
+
+        canvas.draw(&ray, Pixel::WHITE);
+    }
+
+    for (result, shape) in results.into_iter().zip(shapes.iter()) {
+        if result {
+            canvas.draw(shape.as_ref(), Pixel::gray(200));
+        }
+        else {
+            canvas.draw(shape.as_ref(), Pixel::gray(128));
+        }
+    }
 
     let mut file = File::create("output.ppm")?;
 
