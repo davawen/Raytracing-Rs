@@ -3,6 +3,7 @@ use derive_more::{ Div, DivAssign };
 
 use glam::{ Vec2, Vec3 };
 
+use num::FromPrimitive;
 use rand::{ Rng, distributions::{ Distribution, Standard } };
 
 use crate::{shape::{ Rect, Sphere, Ray }, intersection::Intersection};
@@ -104,8 +105,8 @@ impl Canvas {
         shape.draw_outline(self, color);
     }
 
-    pub fn width(&self) -> usize { self.width }
-    pub fn height(&self) -> usize { self.height }
+    pub fn width<T: FromPrimitive>(&self) -> T { T::from_usize(self.width).unwrap() }
+    pub fn height<T: FromPrimitive>(&self) -> T { T::from_usize(self.height).unwrap() }
 }
 
 pub trait Drawable {
@@ -116,13 +117,15 @@ pub trait Drawable {
 
 impl Drawable for Rect {
     fn draw(&self, canvas: &mut Canvas, color: Pixel) {
-        let x1 = self.min.x.floor().max(0.0) as usize;
-        let y1 = self.min.y.floor().max(0.0) as usize;
-        let x2 = (self.max.x.floor() as usize).min(canvas.width()-1);
-        let y2 = (self.max.y.floor() as usize).min(canvas.height()-1);
+        let x1 = self.min.x.floor() as usize;
+        let y1 = self.min.y.floor() as usize;
+        let x2 = self.max.x.floor() as usize;
+        let y2 = self.max.y.floor() as usize;
 
         for y in y1..=y2 {
             for x in x1..=x2 {
+                if !(0..canvas.width).contains(&x) || !(0..canvas.height).contains(&y) { continue }
+
                 canvas.add(x, y, color);
             }
         }
@@ -131,8 +134,8 @@ impl Drawable for Rect {
     fn draw_outline(&self, canvas: &mut Canvas, color: Pixel) {
         let x1 = self.min.x.floor().max(0.0) as usize;
         let y1 = self.min.y.floor().max(0.0) as usize;
-        let x2 = (self.max.x.floor() as usize).min(canvas.width()-1);
-        let y2 = (self.max.y.floor() as usize).min(canvas.height()-1);
+        let x2 = (self.max.x.floor() as usize).min(canvas.width::<usize>()-1);
+        let y2 = (self.max.y.floor() as usize).min(canvas.height::<usize>()-1);
 
         for y in y1..=y2 {
             canvas.set(x1, y, color);

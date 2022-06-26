@@ -54,17 +54,18 @@ impl Intersection<Ray> for Rect {
 
 impl Intersection<Ray> for Sphere {
     fn intersects(&self, ray: &Ray) -> bool {
-        let dist = self.pos - ray.start;
-        let closest = dist.project_onto(ray.dir);
+        let to_center = self.pos - ray.start;
+        let closest = to_center.project_onto(ray.dir);
 
         closest.distance_squared(self.pos) <= self.radius*self.radius
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Inter<'a,T: ?Sized> {
-    point: Vec3,
-    normal: Vec3,
-    shape: &'a T
+    pub point: Vec3,
+    pub normal: Vec3,
+    pub shape: &'a T
 }
 
 pub trait Traceable
@@ -74,8 +75,53 @@ where Self: Shape {
 
 impl Traceable for Sphere {
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
-        if self.intersects(ray) {
-            Some( Inter { point: self.pos, normal: Vec3::ZERO, shape: self } )
+        let to_center = self.pos - ray.start;
+
+        // Calculate coefficients a, b, c from quadratic equation
+
+        // let a = ray.dir.dot(ray.dir); // Assume ray direction is normalised
+        let b = to_center.dot(ray.dir);
+        let c = to_center.dot(to_center) - self.radius*self.radius;
+        let discriminant = b*b - c;
+        
+        if discriminant < 0.0 { return None }
+
+        let discr_sqrt = discriminant.sqrt();
+        let mut t = b - discr_sqrt;
+
+        if t < 0.0 {
+            t = b + discr_sqrt;
+            if t < 0.0 { return None }
+        }
+
+        let point = ray.start + ray.dir * t;
+
+        Some(Inter {
+            point,
+            normal: (point - self.pos).normalize(),
+            shape: self
+        })
+    }
+}
+
+impl Traceable for Plane {
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+        let denom = self.normal.dot(ray.dir);
+        if denom > f32::EPSILON {
+            let dist = self.pos - ray.start;
+
+            let t = dist.dot(self.normal) / denom;
+
+            if t >= 0.0 {
+                Some( Inter {
+                    point: ray.start + ray.dir * t,
+                    normal: self.normal,
+                    shape: self
+                } )
+            }
+            else {
+                None
+            }
         }
         else {
             None
