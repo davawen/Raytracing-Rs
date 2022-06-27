@@ -1,5 +1,7 @@
 use glam::Vec3;
 
+use crate::material::Material;
+
 pub trait Shape: std::fmt::Debug
 {
     fn position(&self) -> Vec3;
@@ -15,13 +17,15 @@ pub struct Rect {
 #[derive(Debug)]
 pub struct Sphere {
     pub pos: Vec3,
-    pub radius: f32
+    pub radius: f32,
+    pub material: Material
 }
 
 #[derive(Debug)]
 pub struct Plane {
     pub pos: Vec3,
-    pub normal: Vec3
+    pub normal: Vec3,
+    pub material: Material
 }
 
 #[derive(Debug)]

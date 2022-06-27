@@ -1,6 +1,6 @@
 use glam::Vec3;
 
-use crate::shape::*;
+use crate::{shape::*, material::Material};
 
 pub trait Intersection<T> where
     T: ?Sized,
@@ -70,10 +70,15 @@ pub struct Inter<'a,T: ?Sized> {
 
 pub trait Traceable
 where Self: Shape {
+    fn material(&self) -> &Material;
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>>;
 }
 
 impl Traceable for Sphere {
+    fn material(&self) -> &Material {
+        &self.material
+    }
+
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
         let to_center = self.pos - ray.start;
 
@@ -105,6 +110,10 @@ impl Traceable for Sphere {
 }
 
 impl Traceable for Plane {
+    fn material(&self) -> &Material {
+        &self.material
+    }
+
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
         let denom = self.normal.dot(ray.dir);
         if denom > f32::EPSILON {

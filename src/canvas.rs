@@ -1,4 +1,4 @@
-use std::{io::{ Write, Result as IOResult }, fs::File, slice::from_raw_parts};
+use std::{io::{ Write, Result as IOResult }, fs::File, slice::from_raw_parts, ops::Mul};
 use derive_more::{ Div, DivAssign };
 
 use glam::{ Vec2, Vec3 };
@@ -6,17 +6,22 @@ use glam::{ Vec2, Vec3 };
 use num::FromPrimitive;
 use rand::{ Rng, distributions::{ Distribution, Standard } };
 
-use crate::{shape::{ Rect, Sphere, Ray }, intersection::Intersection};
+use crate::{shape::{ Rect, Sphere, Ray }, intersection::Intersection, material::Color};
 
 #[derive(Default, Clone, Copy, Debug, Div, DivAssign)]
 pub struct Pixel(pub u8, pub u8, pub u8);
 
 impl Pixel {
-    pub const WHITE: Pixel = Pixel::gray(255);
-    pub const BLACK: Pixel = Pixel::gray(0);
+    pub const WHITE: Pixel = Pixel::splat(255);
+    pub const BLACK: Pixel = Pixel::splat(0);
     pub const RED: Pixel = Pixel(255, 0, 0);
+    pub const GREEN: Pixel = Pixel(0, 255, 0);
+    pub const BLUE: Pixel = Pixel(0, 0, 255);
+    pub const YELLOW: Pixel = Pixel(255, 255, 0);
+    pub const PINK: Pixel = Pixel(255, 0, 255);
+    pub const CYAN: Pixel = Pixel(0, 255, 255);
 
-    pub const fn gray(v: u8) -> Self {
+    pub const fn splat(v: u8) -> Self {
         Pixel( v, v, v )
     }
 
@@ -32,6 +37,12 @@ impl Distribution<Pixel> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Pixel {
         let ( r, g, b ) = rng.gen();
         Pixel( r, g, b )
+    }
+}
+
+impl From<Color> for Pixel {
+    fn from(c: Color) -> Self {
+        Pixel( (c.r.clamp(0.0, 1.0) * 255.0) as u8, (c.g.clamp(0.0, 1.0) * 255.0) as u8, (c.b.clamp(0.0, 1.0) * 255.0) as u8 )
     }
 }
 

@@ -5,14 +5,16 @@ mod shape;
 mod bvh;
 mod canvas;
 mod intersection;
+mod material;
 
 use canvas::*;
 use intersection::{Intersection, Inter};
+use material::Color;
 use rand::{thread_rng, Rng};
 use shape::*;
 use bvh::Bvh;
 
-use crate::intersection::Traceable;
+use crate::{intersection::Traceable, material::Material};
 
 /// Returns the ray passing through the center of a pixel given its position
 fn pixel_as_ray(canvas: &Canvas, x: usize, y: usize, fov: f32) -> Ray {
@@ -44,14 +46,14 @@ fn intersection<'a>(scene: &'a [&'a dyn Traceable], ray: &'a Ray) -> Option<Inte
         })
 }
 
-fn trace(scene: &[&dyn Traceable], ray: Ray) -> Pixel {
+fn trace(scene: &[&dyn Traceable], ray: Ray) -> Color {
     if let Some(inter) = intersection(scene, &ray) {
         let light = inter.normal.dot( Vec3::new(0.0, 1.0, 0.0) ).add(1.0).min(1.0);
 
-        Pixel::gray((light * 128.0) as u8)
+        inter.shape.material().color * light
     }
     else {
-        Pixel::BLACK
+        Color::BLACK
     }
 }
 
@@ -82,7 +84,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             Box::new(
                 Sphere {
                     pos: Vec3::new( 30.0, 0.0, 30.0 ),
-                    radius: rng!(3.0..10.0)
+                    radius: rng!(3.0..10.0),
+                    material: Material { color: Color::GREEN, reflectivity: 0.0 }
                 }
             )
         );
@@ -100,7 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         for x in 0..canvas.width() {
             let ray = pixel_as_ray(&canvas, x, y, (90.0_f32/2.0).tan());
 
-            canvas.set(x, y, trace(&shapes_ref, ray));
+            canvas.set(x, y, trace(&shapes_ref, ray).into());
         }
     }
 
