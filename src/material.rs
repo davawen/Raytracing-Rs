@@ -2,6 +2,9 @@ use std::ops::Mul;
 
 use crate::canvas::Pixel;
 use derive_more::{ Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Div, DivAssign };
+use glam::Vec3;
+use lerp::Lerp;
+use num::Float;
 
 #[derive(Debug, Clone, Copy, Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Div, DivAssign)]
 pub struct Color {
@@ -21,13 +24,13 @@ impl Color {
     pub const PINK: Color = Color::new(1.0, 0.0, 1.0);
     pub const CYAN: Color = Color::new(0.0, 1.0, 1.0);
 
-    const fn new(r: f32, g: f32, b: f32) -> Self {
+    pub const fn new(r: f32, g: f32, b: f32) -> Self {
         Color {
             r, g, b
         }
     }
 
-    fn from_u8(r: u8, g: u8, b: u8) -> Self {
+    pub fn from_u8(r: u8, g: u8, b: u8) -> Self {
         Color {
             r: (r as f32) / 255.0,
             g: (g as f32) / 255.0,
@@ -35,11 +38,11 @@ impl Color {
         }
     }
 
-    const fn splat(c: f32) -> Self {
+    pub const fn splat(c: f32) -> Self {
         Color::new(c, c, c)
     }
 
-    fn splat_u8(c: u8) -> Self {
+    pub fn splat_u8(c: u8) -> Self {
         Color::from_u8(c, c, c)
     }
 }
@@ -50,17 +53,29 @@ impl From<Pixel> for Color {
     }
 }
 
-// impl Mul<f32> for Color {
-//     type Output = Color;
-//
-//     fn mul(self, rhs: f32) -> Self::Output {
-//         Color {
-//             r: self.r * rhs,
-//             g: self.g * rhs,
-//             b: self.b * rhs
-//         }
-//     }
-// }
+impl From<Vec3> for Color {
+    fn from(vec: Vec3) -> Self {
+        Color::new(vec.x, vec.y, vec.z)
+    }
+}
+
+impl Into<Vec3> for Color {
+    fn into(self) -> Vec3 {
+        Vec3::new(self.r, self.g, self.b)
+    }
+}
+
+impl Mul<Color> for Color {
+    type Output = Color;
+
+    fn mul(self, rhs: Color) -> Self::Output {
+        Color {
+            r: self.r * rhs.r,
+            g: self.g * rhs.g,
+            b: self.b * rhs.b
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Material {

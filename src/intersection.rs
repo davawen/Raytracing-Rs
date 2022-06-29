@@ -1,4 +1,5 @@
 use glam::Vec3;
+use num::Zero;
 
 use crate::{shape::*, material::Material};
 
@@ -28,7 +29,7 @@ impl Intersection<Rect> for Rect {
 
 impl Intersection<Ray> for Rect {
     fn intersects(&self, ray: &Ray) -> bool {
-        let inv = 1.0 / ray.dir;
+        let inv = ray.dir.recip();
 
         let tx1 = (self.min.x - ray.start.x) * inv.x;
         let tx2 = (self.max.x - ray.start.x) * inv.x;
@@ -61,6 +62,12 @@ impl Intersection<Ray> for Sphere {
     }
 }
 
+impl Intersection<Sphere> for Sphere {
+    fn intersects(&self, other: &Sphere) -> bool {
+        self.pos.distance_squared(other.pos) <= (self.radius+other.radius)*(self.radius+other.radius)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Inter<'a,T: ?Sized> {
     pub point: Vec3,
@@ -69,7 +76,7 @@ pub struct Inter<'a,T: ?Sized> {
 }
 
 pub trait Traceable
-where Self: Shape {
+where Self: Shape + std::marker::Sync {
     fn material(&self) -> &Material;
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>>;
 }
@@ -116,21 +123,57 @@ impl Traceable for Plane {
 
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
         let denom = self.normal.dot(ray.dir);
-        if denom > f32::EPSILON {
-            let dist = self.pos - ray.start;
 
-            let t = dist.dot(self.normal) / denom;
+        if denom.is_zero() { return None }
 
-            if t >= 0.0 {
-                Some( Inter {
-                    point: ray.start + ray.dir * t,
-                    normal: self.normal,
-                    shape: self
-                } )
-            }
-            else {
-                None
-            }
+        let dist = self.pos - ray.start;
+
+        let t = self.normal.dot(dist) / denom;
+
+        if t >= 0.0 {
+            Some( Inter {
+                point: ray.start + ray.dir * t,
+                normal: self.normal,
+                shape: self
+            } )
+        }
+        else {
+            None
+        }
+    }
+}
+
+impl Traceable for Triangle {
+    fn material(&self) -> &Material {
+        &self.material
+    }
+
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+        let h = ray.dir.cross(self.edge2);
+        let a = self.edge1.dot(h);
+
+        if a.is_zero() { return None } // Ray parallel to triangle
+
+        let f = a.recip();
+        let s = ray.start - self.p1;
+        let u = f * s.dot(h);
+
+        if !(0.0..=1.0).contains(&u) { return None }
+
+        let q = s.cross(self.edge1);
+        let v = f * ray.dir.dot(q);
+
+        if v < 0.0 || u + v > 1.0 { return None }
+
+        // At this stage we can compute t to find out where the intersection point is on the line.
+        let t = f * self.edge2.dot(q);
+
+        if t > 0.0 {
+            Some(Inter {
+                point: ray.start + ray.dir * t,
+                normal: self.normal,
+                shape: self
+            })
         }
         else {
             None

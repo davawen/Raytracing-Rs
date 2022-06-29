@@ -25,10 +25,12 @@ impl<'a> Bvh<'a> {
 
     fn from_child(lhs: Box<Bvh<'a>>, rhs: Box<Bvh<'a>>) -> Self {
         let mut bound = lhs.bound;
-        if rhs.bound.min.x < bound.min.x { bound.min.x = rhs.bound.min.x }
-        if rhs.bound.min.y < bound.min.y { bound.min.y = rhs.bound.min.y }
-        if rhs.bound.max.x > bound.max.x { bound.max.x = rhs.bound.max.x }
-        if rhs.bound.max.y > bound.max.y { bound.max.y = rhs.bound.max.y }
+        bound.min.x = bound.min.x.min(rhs.bound.min.x);
+        bound.min.y = bound.min.y.min(rhs.bound.min.y);
+        bound.min.z = bound.min.z.min(rhs.bound.min.z);
+        bound.max.x = bound.max.x.max(rhs.bound.max.x);
+        bound.max.y = bound.max.y.max(rhs.bound.max.y);
+        bound.max.z = bound.max.z.max(rhs.bound.max.z);
         
         Bvh {
             lhs: Some(lhs),
@@ -43,6 +45,7 @@ impl<'a> Bvh<'a> {
         else if shapes.len() == 1 {
             let shape = *shapes.first().unwrap();
             Bvh::new(shape.bounding_box(), shape)
+            // Bvh::new(Rect::infinite(), shape)
         }
         else {
             shapes.sort_by(|a, b| {
@@ -70,9 +73,20 @@ impl<'a> Bvh<'a> {
             shape.ray_intersection(ray)
         }
         else {
-            self.lhs.as_ref().unwrap().intersects(ray).or_else(
-                || self.rhs.as_ref().unwrap().intersects(ray)
-            )
+            let left = self.lhs.as_ref().unwrap().intersects(ray);
+            let right = self.rhs.as_ref().unwrap().intersects(ray);
+
+            if let Some(left) = left {
+                if let Some(right) = right {
+                    if left.point.distance_squared(ray.start) < right.point.distance_squared(ray.start) { Some(left) } else { Some(right) }
+                }
+                else {
+                    Some(left)
+                }
+            }
+            else {
+                right
+            }
         }
     }
 }
