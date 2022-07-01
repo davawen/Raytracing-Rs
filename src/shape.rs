@@ -53,6 +53,15 @@ impl Rect {
             max: Vec3::splat(f32::INFINITY)
         }
     }
+
+    pub fn order_components(mut self) -> Self {
+        let this = self.clone();
+
+        self.min = this.min.min(this.max);
+        self.max = this.max.max(this.min);
+
+        self
+    } 
 }
 
 impl Shape for Rect {
@@ -74,7 +83,7 @@ impl Shape for Sphere {
         Rect {
             min: self.pos - self.radius,
             max: self.pos + self.radius
-        }
+        }.order_components()
     }
 }
 

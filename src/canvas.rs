@@ -1,9 +1,9 @@
-use std::{io::{ Write, Result as IOResult }, fs::File, slice::from_raw_parts, ops::Mul};
+use std::{io::{ Write, Result as IOResult }, fs::File, slice::from_raw_parts};
 use derive_more::{ Div, DivAssign };
 
-use glam::{ Vec2, Vec3 };
+use glam::Vec3;
 
-use num::FromPrimitive;
+use num::{FromPrimitive, integer::Roots};
 use rand::{ Rng, distributions::{ Distribution, Standard } };
 
 use crate::{shape::{ Rect, Sphere, Ray }, intersection::Intersection, material::Color};
@@ -49,7 +49,7 @@ impl From<Color> for Pixel {
 pub struct Canvas {
     width: usize,
     height: usize,
-    data: Vec<Pixel>
+    pub data: Vec<Pixel>
 }
 
 impl Canvas {
@@ -61,6 +61,7 @@ impl Canvas {
         }
     }
 
+    /// Returns a slice over the individual components of the pixels
     pub fn flat_pixels(&self) -> &[u8] {
         unsafe {
             let data: *const u8 = self.data.get(0).unwrap().as_slice().as_ptr();
@@ -72,7 +73,11 @@ impl Canvas {
     pub fn write_to(&self, file: &mut File) -> IOResult<()> {
         writeln!(file, "P6\n{} {}\n255", self.width, self.height)?;
 
-        file.write_all( self.flat_pixels() )?;
+        let buffer: Vec<_> = self.flat_pixels().iter().map(|p| {
+            (((*p as f64) / 256.0).sqrt() * 256.0) as u8 // Gamma correction
+        }).collect();
+
+        file.write_all( &buffer )?;
 
         Ok(())
     }
@@ -98,6 +103,7 @@ impl Canvas {
         );
     }
 
+    #[allow(unused)]
     pub fn get(&self, x: usize, y: usize) -> &Pixel {
         self.check(x, y);
         &self.data[y * self.width + x]

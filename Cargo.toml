@@ -6,14 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam = "0.8.1"
 derive_more = "0.99.17"
 glam = "0.21.1"
+itertools = "0.10.3"
 lerp = "0.4.0"
 num = "0.4.0"
 rand = "0.8.5"
-spmc = "0.3.0"
-
+rayon = "1.5.3"
 
 [profile.release]
 debug = 1

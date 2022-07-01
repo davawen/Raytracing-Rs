@@ -72,6 +72,7 @@ impl Intersection<Sphere> for Sphere {
 pub struct Inter<'a,T: ?Sized> {
     pub point: Vec3,
     pub normal: Vec3,
+    pub front: bool,
     pub shape: &'a T
 }
 
@@ -108,9 +109,23 @@ impl Traceable for Sphere {
 
         let point = ray.start + ray.dir * t;
 
+        let dist = (point-self.pos).normalize();
+
+        let sgn = self.radius.signum();
+
+        // Make normal point inwards when ray start is inside sphere
+        // Multiplying by the sign inverse's the comparison ( negative radius = inside-out sphere )
+        let ( front, normal ) = if self.pos.distance_squared(ray.start)*sgn <= self.radius*self.radius*sgn {
+            ( false, -dist )
+        }
+        else {
+            ( true, dist )
+        };
+
         Some(Inter {
             point,
-            normal: (point - self.pos).normalize(),
+            normal,
+            front,
             shape: self
         })
     }
@@ -134,6 +149,7 @@ impl Traceable for Plane {
             Some( Inter {
                 point: ray.start + ray.dir * t,
                 normal: self.normal,
+                front: false,
                 shape: self
             } )
         }
@@ -168,10 +184,13 @@ impl Traceable for Triangle {
         // At this stage we can compute t to find out where the intersection point is on the line.
         let t = f * self.edge2.dot(q);
 
+        let normal = if ray.dir.dot(self.normal) < 0.0 { self.normal } else { -self.normal };
+
         if t > 0.0 {
             Some(Inter {
                 point: ray.start + ray.dir * t,
-                normal: self.normal,
+                normal,
+                front: true,
                 shape: self
             })
         }
