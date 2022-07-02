@@ -1,9 +1,6 @@
-use std::{rc::{Rc, Weak}, ops::Sub, cmp::Ordering};
-
 use rand::{thread_rng, Rng};
 
 use crate::{shape::*, intersection::{Inter, Intersection, Traceable}};
-use crate::canvas::{ Canvas, Drawable, Pixel };
 
 #[derive(Debug)]
 pub struct Bvh<'a> {
@@ -66,7 +63,7 @@ impl<'a> Bvh<'a> {
         }
     }
 
-    pub fn intersects(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+    pub fn intersects(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>> {
         if !self.bound.intersects(ray) { return None; }
 
         if let Some(shape) = self.shape {
@@ -87,21 +84,6 @@ impl<'a> Bvh<'a> {
             else {
                 right
             }
-        }
-    }
-}
-
-impl Drawable for Bvh<'_> {
-    fn draw(&self, canvas: &mut Canvas, color: Pixel) {
-        canvas.draw_outline(&self.bound, Pixel::RED);
-
-        canvas.draw(&self.bound, color / 10);
-
-        if let Some(lhs) = &self.lhs {
-            canvas.draw(lhs.as_ref(), thread_rng().gen());
-        }
-        if let Some(rhs) = &self.rhs {
-            canvas.draw(rhs.as_ref(), thread_rng().gen());
         }
     }
 }

@@ -1,27 +1,27 @@
-use std::{fs::File, error::Error, f32::consts::PI, sync::atomic::AtomicUsize};
+use std::{error::Error, f32::consts::PI, sync::atomic::AtomicUsize};
 use glam::{ Vec2, Vec3, Quat, Mat3 };
-use itertools::Itertools;
+use image::{RgbImage, Rgb, buffer::PixelsMut};
 use rayon::prelude::*;
 
 mod shape;
 mod bvh;
-mod canvas;
 mod intersection;
 mod material;
 mod reflect;
+mod texture;
 
-#[cfg(test)]
-mod test;
-
-use canvas::*;
 use intersection::{Intersection, Inter};
+use texture::*;
 use lerp::Lerp;
 use material::Color;
-use rand::{thread_rng, Rng, seq::SliceRandom, random};
+use rand::{thread_rng, Rng, random};
 use shape::*;
 use bvh::Bvh;
 
-use crate::{intersection::Traceable, material::Material};
+use crate::{
+    intersection::Traceable,
+    material::Material
+};
 
 
 #[derive(Debug)]
@@ -31,10 +31,10 @@ struct Camera {
 }
 
 /// Returns the ray passing through a pixel given its position
-fn pixel_as_ray(canvas: &Canvas, camera: &Camera, x: f32, y: f32, fov: f32) -> Ray {
+fn pixel_as_ray(canvas: &RgbImage, camera: &Camera, x: f32, y: f32, fov: f32) -> Ray {
     let pos = Vec2::new(x, y);
 
-    let canvas_size = Vec2::new(canvas.width(), canvas.height());
+    let canvas_size = Vec2::new(canvas.width() as f32, canvas.height() as f32);
 
     let normalized_coordinates = pos / canvas_size * 2.0 - Vec2::ONE; // Range -1..1
 
@@ -49,7 +49,7 @@ fn pixel_as_ray(canvas: &Canvas, camera: &Camera, x: f32, y: f32, fov: f32) -> R
 
 }
 
-fn intersection<'a>(scene: &'a [&'a dyn Traceable], ray: &'a Ray) -> Option<Inter<'a, dyn Traceable>> {
+fn intersection<'a>(scene: &'a [&'a dyn Traceable], ray: &'a Ray) -> Option<Inter<&'a dyn Traceable>> {
     scene.iter()
         .filter_map(|shape| {
             shape.ray_intersection(ray)
@@ -156,7 +156,7 @@ fn trace(scene: &Bvh, light_source: &Vec3, ray: Ray, count: i32) -> Color {
 
         let ( ray, attenuation ) = material.scatter(&ray, &inter);
 
-        trace(scene, light_source, ray, count + 1) * attenuation
+        trace(scene, light_source, ray.offset(), count + 1) * attenuation
     }
     else {
         let shadow = ray.dir.dot((*light_source - ray.start).normalize());
@@ -165,14 +165,15 @@ fn trace(scene: &Bvh, light_source: &Vec3, ray: Ray, count: i32) -> Color {
             Color::splat(shadow)
         }
         else {
-            Color::new(0.1, 0.4, 0.7).lerp(Color::WHITE, ray.dir.y/2.0 + 0.5) // Whiter towards top and bluer towards bottom
+            Color::new(0.1, 0.4, 0.7).lerp(Color::new(0.7, 0.8, 0.9), ray.dir.y/2.0 + 0.5) // Whiter towards top and bluer towards bottom
         }
     }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    let mut canvas = Canvas::new(1200, 600);
+    let image = Texture::from_file("/home/davawen/Pictures/funi.png")?;
+    let earth = Texture::from_file("/home/davawen/Pictures/earth.jpg")?;
 
     let mut shapes: Vec<Box<dyn Traceable>> = Vec::new();
     macro_rules! rng {
@@ -185,7 +186,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let new_sphere = Sphere {
             pos: Vec3::new( rng!(-70.0..70.0), 0.0, rng!(30.0..90.0) ),
             radius: 10.0,
-            material: if random() { Material::Lambertian { albedo: random() } }
+            material: if random() { Material::Lambertian { albedo: random(), image: None } }
                 else { Material::Metal { albedo: random() } }
         };
 
@@ -202,27 +203,47 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     shapes.push(Box::new(Triangle::new(
-        Vec3::new( 0.0, 15.0, 50.0 ),
-        Vec3::new( 20.0, 10.0, 60.0 ),
-        Vec3::new( 10.0, 15.0, 55.0 ),
-        Material::Lambertian { albedo: Color::GREEN }
+        Vertex { pos: Vec3::new( 0.0, 15.0, 50.0 ), ..Default::default() },
+        Vertex { pos: Vec3::new( 20.0, 10.0, 60.0 ), ..Default::default() },
+        Vertex { pos: Vec3::new( 10.0, 15.0, 55.0 ), ..Default::default() },
+        Material::Lambertian { albedo: Color::GREEN, image: None }
     )));
 
     shapes.push(Box::new(Plane {
         pos: Vec3::new(0.0, -10.0, 0.0),
         normal: Vec3::new(0.0, 1.0, 0.0),
-        material: Material::Lambertian { albedo: Color::new( 0.8, 0.4, 0.0 ) }
+        material: Material::Lambertian { albedo: Color::new( 0.8, 0.4, 0.0 ), image: None}
     }));
 
     shapes.push(Box::new(Sphere {
-        pos: Vec3::new(0.0, 20.0, 30.0),
+        pos: Vec3::new(-80.0, 0.0, 40.0),
         radius: 10.0,
-        material: Material::Transparent { refraction_index: 1.5 }
+        material: Material::Lambertian { albedo: Color::WHITE, image: Some(&earth) }
     }));
 
+    shapes.push(Box::new(Triangle::new(
+        Vertex { pos: Vec3::new( 0.0, 20.0, 20.0 ), tex: Vec2::new(0.0, 0.0), ..Default::default() },
+        Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
+        Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
+        Material::Lambertian { albedo: Color::WHITE, image: Some(&image) }
+    )));
+
+    shapes.push(Box::new(Triangle::new(
+        Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
+        Vertex { pos: Vec3::new( 20.0, 30.0, 20.0 ), tex: Vec2::new(2.0, 2.0), ..Default::default() },
+        Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
+        Material::Lambertian { albedo: Color::WHITE, image: Some(&image) }
+    )));
+
     // shapes.push(Box::new(Sphere {
-    //     pos: Vec3::new(0.0, 20.0, 30.0),
-    //     radius: 8.0,
+    //     pos: Vec3::new(7.0, 25.0, 20.0),
+    //     radius: 5.0,
+    //     material: Material::Transparent { refraction_index: 1.5 }
+    // }));
+
+    // shapes.push(Box::new(Sphere {
+    //     pos: Vec3::new(10.0, 25.0, 20.0),
+    //     radius: -4.0,
     //     material: Material::Transparent { refraction_index: 1.5 }
     // }));
 
@@ -249,13 +270,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let bvh = Bvh::construct(&mut shapes_ref, 0);
     
-    let count: AtomicUsize = AtomicUsize::new(0);
-
     const NUM_SAMPLES: usize = 128;
 
+    // let mut canvas = Canvas::new(1200, 600);
+    let mut canvas = RgbImage::new(1200, 600);
+
     unsafe {
-        let _data = &mut canvas.data as *mut Vec<Pixel>;
-        (0..canvas.height()).cartesian_product(0..canvas.width()).zip(&mut *_data).par_bridge().for_each(|((y, x), pixel)| {
+        let count: AtomicUsize = AtomicUsize::new(0);
+        let count_fraction = (canvas.width() * canvas.height() / 10) as usize;
+
+
+        let _canvas = (&mut canvas) as *mut RgbImage; // Ignore borrow checking, we know writes don't alias
+
+        (*_canvas).enumerate_pixels_mut().par_bridge().for_each(|(x, y, pixel)| {
             let mut color = Color::BLACK;
 
             for _ in 0..NUM_SAMPLES {
@@ -270,16 +297,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             *pixel = color.into();
             
             let val = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if val.rem_euclid(canvas.width()) == 0 {
-                println!("Row {} gotten", val.div_euclid(canvas.width()));
+            if val % count_fraction == 0 {
+                println!("{} % done", val/count_fraction * 10);
             }
         });
     }
 
+    // Gamma correction
+    canvas.iter_mut().for_each(|p| *p = (((*p as f64) / 256.0).sqrt() * 256.0) as u8 );
 
-    let mut file = File::create("output.ppm")?;
-
-    canvas.write_to(&mut file)?;
+    canvas.save("output.png")?;
 
     Ok(())
 }

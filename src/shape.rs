@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Vec3, Vec2};
 
 use crate::material::Material;
 
@@ -15,29 +15,37 @@ pub struct Rect {
 }
 
 #[derive(Debug)]
-pub struct Sphere {
+pub struct Sphere<'a> {
     pub pos: Vec3,
     pub radius: f32,
-    pub material: Material
+    pub material: Material<'a>
 }
 
 #[derive(Debug)]
-pub struct Plane {
+pub struct Plane<'a> {
     pub pos: Vec3,
     pub normal: Vec3,
-    pub material: Material
+    pub material: Material<'a>
+}
+
+#[derive(Debug, Default)]
+pub struct Vertex {
+    pub pos: Vec3,
+    pub normal: Vec3,
+    pub tex: Vec2
 }
 
 #[derive(Debug)]
-pub struct Triangle {
-    pub p1: Vec3,
-    pub p2: Vec3,
-    pub p3: Vec3,
-    pub material: Material,
+pub struct Triangle<'a> {
+    pub p0: Vertex,
+    pub p1: Vertex,
+    pub p2: Vertex,
+    pub material: Material<'a>,
 
     pub normal: Vec3,
     pub edge1: Vec3,
-    pub edge2: Vec3
+    pub edge2: Vec3,
+    pub edge3: Vec3
 }
 
 #[derive(Debug)]
@@ -64,6 +72,15 @@ impl Rect {
     } 
 }
 
+impl Ray {
+    /// Offset ray start slightly in its direction
+    pub fn offset(mut self) -> Self {
+        self.start += self.dir * 0.01;
+
+        self
+    }
+}
+
 impl Shape for Rect {
     fn position(&self) -> Vec3 {
         self.min
@@ -74,7 +91,7 @@ impl Shape for Rect {
     }
 }
 
-impl Shape for Sphere {
+impl Shape for Sphere<'_> {
     fn position(&self) -> Vec3 {
         self.pos
     }
@@ -87,7 +104,7 @@ impl Shape for Sphere {
     }
 }
 
-impl Shape for Plane {
+impl Shape for Plane<'_> {
     fn position(&self) -> Vec3 {
         self.pos
     }
@@ -105,28 +122,29 @@ impl Shape for Plane {
     }
 }
 
-impl Shape for Triangle {
+impl Shape for Triangle<'_> {
     fn position(&self) -> Vec3 {
-        (self.p1 + self.p2 + self.p3) / 3.0
+        (self.p0.pos + self.p1.pos + self.p2.pos) / 3.0
     }
 
     fn bounding_box(&self) -> Rect {
         Rect {
-            min: self.p1.min(self.p2.min(self.p3)),
-            max: self.p1.max(self.p2.max(self.p3))
+            min: self.p0.pos.min(self.p1.pos.min(self.p2.pos)),
+            max: self.p0.pos.max(self.p1.pos.max(self.p2.pos))
         }
     }
 }
 
-impl Triangle {
-    pub fn new(p1: Vec3, p2: Vec3, p3: Vec3, material: Material) -> Self {
-        Triangle { p1, p2, p3, material, normal: Vec3::ZERO, edge1: Vec3::ZERO, edge2: Vec3::ZERO}
+impl<'a> Triangle<'a> {
+    pub fn new(p0: Vertex, p1: Vertex, p2: Vertex, material: Material<'a>) -> Self {
+        Triangle { p0, p1, p2, material, normal: Vec3::ZERO, edge1: Vec3::ZERO, edge2: Vec3::ZERO, edge3: Vec3::ZERO}
             .precompute()
     }
 
     fn precompute(mut self) -> Self {
-        self.edge1 = self.p2 - self.p1;
-        self.edge2 = self.p3 - self.p1;
+        self.edge1 = self.p1.pos - self.p0.pos;
+        self.edge2 = self.p2.pos - self.p0.pos;
+        self.edge3 = self.p2.pos - self.p1.pos;
         self.normal = -self.edge1.cross(self.edge2).normalize();
 
         self

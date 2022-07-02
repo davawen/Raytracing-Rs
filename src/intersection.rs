@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use glam::Vec3;
 use num::Zero;
 
@@ -53,7 +55,7 @@ impl Intersection<Ray> for Rect {
     }
 }
 
-impl Intersection<Ray> for Sphere {
+impl Intersection<Ray> for Sphere<'_> {
     fn intersects(&self, ray: &Ray) -> bool {
         let to_center = self.pos - ray.start;
         let closest = to_center.project_onto(ray.dir);
@@ -62,32 +64,37 @@ impl Intersection<Ray> for Sphere {
     }
 }
 
-impl Intersection<Sphere> for Sphere {
+impl Intersection<Sphere<'_>> for Sphere<'_> {
     fn intersects(&self, other: &Sphere) -> bool {
         self.pos.distance_squared(other.pos) <= (self.radius+other.radius)*(self.radius+other.radius)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Inter<'a,T: ?Sized> {
+pub struct Inter<T> {
     pub point: Vec3,
     pub normal: Vec3,
     pub front: bool,
-    pub shape: &'a T
+    pub shape: T
 }
 
 pub trait Traceable
 where Self: Shape + std::marker::Sync {
     fn material(&self) -> &Material;
-    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>>;
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>>;
+
+    /// Returns a texture coordinate according to a point on itself
+    fn sample(&self, _p: Vec3) -> (f32, f32) {
+        ( 0.0, 0.0 )
+    }
 }
 
-impl Traceable for Sphere {
+impl<'a> Traceable for Sphere<'a> {
     fn material(&self) -> &Material {
         &self.material
     }
 
-    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>> {
         let to_center = self.pos - ray.start;
 
         // Calculate coefficients a, b, c from quadratic equation
@@ -129,14 +136,23 @@ impl Traceable for Sphere {
             shape: self
         })
     }
+
+    fn sample(&self, p: Vec3) -> (f32, f32) {
+        let dist = p - self.pos;
+
+        let u = (-dist.x.atan2(dist.z) / (2.0*PI) + 0.5 + 0.3) % 1.0;
+        let v = dist.y / self.radius / 2.0 + 0.5;
+
+        ( u, v )
+    }
 }
 
-impl Traceable for Plane {
+impl Traceable for Plane<'_> {
     fn material(&self) -> &Material {
         &self.material
     }
 
-    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>> {
         let denom = self.normal.dot(ray.dir);
 
         if denom.is_zero() { return None }
@@ -159,19 +175,19 @@ impl Traceable for Plane {
     }
 }
 
-impl Traceable for Triangle {
+impl<'a> Traceable for Triangle<'a> {
     fn material(&self) -> &Material {
         &self.material
     }
 
-    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<dyn Traceable>> {
+    fn ray_intersection(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>> {
         let h = ray.dir.cross(self.edge2);
         let a = self.edge1.dot(h);
 
         if a.is_zero() { return None } // Ray parallel to triangle
 
         let f = a.recip();
-        let s = ray.start - self.p1;
+        let s = ray.start - self.p0.pos;
         let u = f * s.dot(h);
 
         if !(0.0..=1.0).contains(&u) { return None }
@@ -197,5 +213,23 @@ impl Traceable for Triangle {
         else {
             None
         }
+    }
+
+    fn sample(&self, p: Vec3) -> (f32, f32) {
+        // v1 - v2 -> -edge1
+        // v1 - v3 -> -edge2
+        // v2 - v3 -> -edge3
+        // v3 - v2 -> edge3
+        // v3 - v1 -> edge2
+
+        let div = -self.edge3.y * (-self.edge2.x) + self.edge3.x * (-self.edge2.y);
+
+        let w0 = ( -self.edge3.y * (p.x - self.p2.pos.x) + self.edge3.x * (p.y - self.p2.pos.y) ) / div;
+        let w1 = ( self.edge2.y * (p.x - self.p2.pos.x) + -self.edge2.x * (p.y - self.p2.pos.y)) / div;
+        let w2 = 1.0 - w0 - w1;
+
+        let out = w0*self.p0.tex + w1*self.p1.tex + w2*self.p2.tex;
+
+        ( out.x, out.y )
     }
 }
