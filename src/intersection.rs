@@ -173,6 +173,10 @@ impl Traceable for Plane<'_> {
             None
         }
     }
+
+    fn sample(&self, p: Vec3) -> (f32, f32) {
+        ( p.x / 20.0, p.z / 20.0 )
+    }
 }
 
 impl<'a> Traceable for Triangle<'a> {
@@ -216,17 +220,7 @@ impl<'a> Traceable for Triangle<'a> {
     }
 
     fn sample(&self, p: Vec3) -> (f32, f32) {
-        // v1 - v2 -> -edge1
-        // v1 - v3 -> -edge2
-        // v2 - v3 -> -edge3
-        // v3 - v2 -> edge3
-        // v3 - v1 -> edge2
-
-        let div = -self.edge3.y * (-self.edge2.x) + self.edge3.x * (-self.edge2.y);
-
-        let w0 = ( -self.edge3.y * (p.x - self.p2.pos.x) + self.edge3.x * (p.y - self.p2.pos.y) ) / div;
-        let w1 = ( self.edge2.y * (p.x - self.p2.pos.x) + -self.edge2.x * (p.y - self.p2.pos.y)) / div;
-        let w2 = 1.0 - w0 - w1;
+        let (w0, w1, w2) = self.barycentric_weigths(p);
 
         let out = w0*self.p0.tex + w1*self.p1.tex + w2*self.p2.tex;
 

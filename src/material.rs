@@ -2,7 +2,7 @@ use std::{ops::Mul, f32::consts::PI};
 
 use crate::{shape::Ray, intersection::{Inter, Traceable}, reflect::Reflect, texture::Texture};
 use derive_more::{ Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Div, DivAssign };
-use glam::{Vec3, Mat3};
+use glam::{Vec3, Mat3, Vec3Swizzles};
 use image::Rgb;
 use rand::{Rng, prelude::Distribution, distributions::Standard, random};
 
@@ -107,20 +107,44 @@ impl Distribution<Color> for Standard {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct Material<'a> {
+    texture: Option<&'a Texture>,
+    normal_map: Option<&'a Texture>,
+    kind: MaterialKind
+}
+
+#[derive(Debug, Clone, Copy)]
 #[allow(unused)]
-pub enum Material<'a> {
-    Lambertian { albedo: Color, image: Option<&'a Texture> },
+pub enum MaterialKind {
+    Lambertian { albedo: Color },
     Metal { albedo: Color },
     Transparent { refraction_index: f32 }
 }
 
 impl Default for Material<'_> {
     fn default() -> Self {
-        Self::Lambertian { albedo: Color::WHITE, image: None }
+        Material {
+            texture: None,
+            normal_map: None,
+            kind: MaterialKind::Lambertian { albedo: Color::WHITE }
+        }
     }
 }
 
-fn random_vector_in_hemisphere(normal: Vec3) -> Vec3 {
+fn tangent_to_world_matrix(normal: Vec3) -> Mat3 {
+    let n_t = if normal.x.abs() > normal.y.abs() {
+        Vec3::new(normal.z, 0.0, -normal.x)
+    }
+    else {
+        Vec3::new(0.0, -normal.z, normal.y)
+    }.normalize();
+
+    let n_b = normal.cross(n_t);
+
+    Mat3::from_cols(n_b, normal, n_t)
+}
+
+fn random_vector_in_hemisphere(tangent_matrix: Mat3) -> Vec3 {
     // Sample point on local hemisphere
     let r1: f32 = random();
     let r2: f32 = random();
@@ -132,65 +156,86 @@ fn random_vector_in_hemisphere(normal: Vec3) -> Vec3 {
 
     let sample = Vec3::new(x, r1, z);
 
-    // Construct coordinate system aligned to normal
-    let n_t = if normal.x.abs() > normal.y.abs() {
-        Vec3::new(normal.z, 0.0, -normal.x)
-    }
-    else {
-        Vec3::new(0.0, -normal.z, normal.y)
-    }.normalize();
-
-    let n_b = normal.cross(n_t);
-
     // Transform(rotate) sample into normal coordinate space
-    let matrix = Mat3::from_cols(n_b, normal, n_t);
-
-    matrix * sample
+    tangent_matrix * sample
 }
 
 impl<'a> Material<'a> {
+    pub fn new_lambertian(albedo: Color) -> Self {
+        Material { kind: MaterialKind::Lambertian { albedo }, ..Default::default() }
+    }
+    pub fn new_metal(albedo: Color) -> Self {
+        Material { kind: MaterialKind::Metal { albedo }, ..Default::default() }
+    }
+    pub fn new_transparent(refraction_index: f32) -> Self {
+        Material { kind: MaterialKind::Transparent { refraction_index }, ..Default::default() }
+    }
+
+    pub fn set_texture(mut self, texture: &'a Texture) -> Self {
+        self.texture = Some(texture);
+        self
+    }
+
+    pub fn set_normal(mut self, texture: &'a Texture) -> Self {
+        self.normal_map = Some(texture);
+        self
+    }
+
+
     pub fn scatter(&self, ray: &Ray, inter: &Inter<&dyn Traceable>) -> ( Ray, Color) {
-        use Material::*;
+        use MaterialKind::*;
 
-        match *self {
-            Lambertian { albedo, image} => {
-                let ray = Ray { start: inter.point, dir: random_vector_in_hemisphere(inter.normal) };
-                let cosine_law = ray.dir.dot(inter.normal).max(0.0);
+        let tex = if let Some(image) = self.texture { 
+            let ( u, v ) = inter.shape.sample(inter.point);
 
-                let tex = if let Some(image) = image { 
-                    let ( u, v ) = inter.shape.sample(inter.point);
+            image.sample(u, v)
+        }
+        else {
+            Color::WHITE
+        };
 
-                    image.sample(u, v)
-                }
-                else {
-                    Color::WHITE
-                };
+        // Construct coordinate system aligned to original normal
+        let tangent_matrix = tangent_to_world_matrix(inter.normal);
+
+        let normal = if let Some(map) = self.normal_map {
+            let ( u, v ) = inter.shape.sample(inter.point);
+
+            let normal: Vec3 = map.sample(u, v).into();
+            let normal = normal*2.0 - 1.0; // Transform normal from range [0; 1] to [-1; 1]
+
+            (tangent_matrix * normal.xzy()).normalize()
+        }
+        else { inter.normal };
+
+        match self.kind {
+            Lambertian { albedo } => {
+                let ray = Ray { start: inter.point, dir: random_vector_in_hemisphere(tangent_matrix) };
+                let cosine_law = ray.dir.dot(normal).max(0.0);
 
                 ( ray, albedo * tex * cosine_law )
             },
             Metal { albedo } => {
-                let reflected = ray.dir.reflect(inter.normal);
+                let reflected = ray.dir.reflect(normal);
 
                 let ray = Ray { start: inter.point, dir: reflected };
 
-                ( ray, albedo )
+                ( ray, albedo * tex )
             },
             Transparent { refraction_index: index } => {
                 let mu = if inter.front { 1.0 / index } else { index };
 
-                let cos_theta = ray.dir.dot(-inter.normal).min(1.0);
+                let cos_theta = ray.dir.dot(-normal).min(1.0);
                 let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
 
-                
                 let ray = if 
                     mu * sin_theta > 1.0 || // Snells law, if n1/n2 * sin(theta) > 1.0 -> Total internal reflection
                     Material::schlick_reflectance(cos_theta, mu) > random() // Randomly reflect or refract, but the steeper the angle of vision, the more reflection is choosen
                 {
-                    Ray { start: inter.point, dir: ray.dir.reflect(inter.normal) }
+                    Ray { start: inter.point, dir: ray.dir.reflect(normal) }
                 }
                 else {  
-                    let out_perp = mu * ( ray.dir + cos_theta*inter.normal );
-                    let out_parallel = -(1.0 - out_perp.length_squared()).abs().sqrt() * inter.normal;
+                    let out_perp = mu * ( ray.dir + cos_theta*normal );
+                    let out_parallel = -(1.0 - out_perp.length_squared()).abs().sqrt() * normal;
 
                     let refracted_dir = out_perp + out_parallel;
 

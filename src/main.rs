@@ -88,7 +88,7 @@ fn random_vector_in_hemisphere(normal: Vec3) -> Vec3 {
 }
 
 fn trace(scene: &Bvh, light_source: &Vec3, ray: Ray, count: i32) -> Color {
-    const MAX_COUNT: i32 = 100;
+    const MAX_COUNT: i32 = 60;
 
     if count >= MAX_COUNT { return Color::BLACK }
 
@@ -174,6 +174,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let image = Texture::from_file("/home/davawen/Pictures/funi.png")?;
     let earth = Texture::from_file("/home/davawen/Pictures/earth.jpg")?;
+    let normal = Texture::from_file("/home/davawen/Pictures/3314-normal.jpg")?;
+    let earth_normal = Texture::from_file("/home/davawen/Pictures/2k_earth_normal_map.tif")?;
+    let metal_normal = Texture::from_file("/home/davawen/Pictures/metal.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
 
     let mut shapes: Vec<Box<dyn Traceable>> = Vec::new();
     macro_rules! rng {
@@ -186,8 +189,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let new_sphere = Sphere {
             pos: Vec3::new( rng!(-70.0..70.0), 0.0, rng!(30.0..90.0) ),
             radius: 10.0,
-            material: if random() { Material::Lambertian { albedo: random(), image: None } }
-                else { Material::Metal { albedo: random() } }
+            material: if random() { Material::new_lambertian(random()) }
+                else { Material::new_metal(random()).set_normal(&normal) }
         };
 
         // We know there is no shape other than spheres
@@ -206,34 +209,41 @@ fn main() -> Result<(), Box<dyn Error>> {
         Vertex { pos: Vec3::new( 0.0, 15.0, 50.0 ), ..Default::default() },
         Vertex { pos: Vec3::new( 20.0, 10.0, 60.0 ), ..Default::default() },
         Vertex { pos: Vec3::new( 10.0, 15.0, 55.0 ), ..Default::default() },
-        Material::Lambertian { albedo: Color::GREEN, image: None }
+        Material::new_lambertian(Color::GREEN)
     )));
 
     shapes.push(Box::new(Plane {
         pos: Vec3::new(0.0, -10.0, 0.0),
         normal: Vec3::new(0.0, 1.0, 0.0),
-        material: Material::Lambertian { albedo: Color::new( 0.8, 0.4, 0.0 ), image: None}
-    }));
-
-    shapes.push(Box::new(Sphere {
-        pos: Vec3::new(-80.0, 0.0, 40.0),
-        radius: 10.0,
-        material: Material::Lambertian { albedo: Color::WHITE, image: Some(&earth) }
+        material: Material::new_metal(Color::new(0.8, 0.4, 0.0)).set_normal(&metal_normal) /* Material::new_lambertian(Color::new( 0.8, 0.4, 0.0 )) */
     }));
 
     shapes.push(Box::new(Triangle::new(
         Vertex { pos: Vec3::new( 0.0, 20.0, 20.0 ), tex: Vec2::new(0.0, 0.0), ..Default::default() },
         Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
         Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
-        Material::Lambertian { albedo: Color::WHITE, image: Some(&image) }
+        Material::default().set_texture(&image)
     )));
 
     shapes.push(Box::new(Triangle::new(
         Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
         Vertex { pos: Vec3::new( 20.0, 30.0, 20.0 ), tex: Vec2::new(2.0, 2.0), ..Default::default() },
         Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
-        Material::Lambertian { albedo: Color::WHITE, image: Some(&image) }
+        Material::default().set_texture(&image)
     )));
+
+    // shapes.push(Box::new(Sphere {
+    //     pos: Vec3::new(-20.0, 0.0, 20.0),
+    //     radius: 15.0,
+    //     material: Material::default().set_texture(&earth)
+    // }));
+    //
+    // shapes.push(Box::new(Sphere {
+    //     pos: Vec3::new(20.0, 0.0, 20.0),
+    //     radius: 15.0,
+    //     material: Material::default().set_texture(&earth).set_normal(&earth_normal)
+    // }));
+
 
     // shapes.push(Box::new(Sphere {
     //     pos: Vec3::new(7.0, 25.0, 20.0),
@@ -270,10 +280,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let bvh = Bvh::construct(&mut shapes_ref, 0);
     
-    const NUM_SAMPLES: usize = 128;
+    const NUM_SAMPLES: usize = 256;
 
-    // let mut canvas = Canvas::new(1200, 600);
-    let mut canvas = RgbImage::new(1200, 600);
+    let mut canvas = RgbImage::new(1600, 900);
 
     unsafe {
         let count: AtomicUsize = AtomicUsize::new(0);
