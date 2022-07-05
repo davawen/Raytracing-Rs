@@ -88,71 +88,12 @@ fn random_vector_in_hemisphere(normal: Vec3) -> Vec3 {
 }
 
 fn trace(scene: &Bvh, light_source: &Vec3, ray: Ray, count: i32) -> Color {
-    const MAX_COUNT: i32 = 60;
+    const MAX_COUNT: i32 = 20;
 
     if count >= MAX_COUNT { return Color::BLACK }
 
     if let Some(inter) = scene.intersects(&ray) {
         let material = inter.shape.material();
-
-        // if material.transparent {
-        //     let mu = if inter.backface { material.refraction } else { 1.0 / material.refraction };
-        //
-        //     let cos_theta = ray.dir.dot(-inter.normal).min(1.0);
-        //     let sin_theta = (1.0 - cos_theta*cos_theta).sqrt();
-        //
-        //     let ray = if mu * sin_theta > 1.0 {
-        //         Ray { start: inter.point + inter.normal * 0.01, dir: ray.dir.reflect(inter.normal) }
-        //     }
-        //     else {  
-        //         let out_perp = mu * ( ray.dir + cos_theta*inter.normal );
-        //         let out_parallel = -(1.0 - out_perp.length_squared()).abs().sqrt() * inter.normal;
-        //
-        //         let refracted_dir = out_perp + out_parallel;
-        //
-        //         Ray { start: inter.point - inter.normal * 0.01, dir: refracted_dir.normalize() }
-        //     };
-        //
-        //     trace( scene, light_source, ray, count + 1 )
-        // }
-        // else {
-        //     if material.reflectivity == 0.0 { // Mat
-        //         // let shadow = inter.normal.dot( (*light_source - inter.point).normalize() ).add(1.0).min(1.0);
-        //         //
-        //         // inter.shape.material().color * shadow
-        //
-        //         let towards_light = (*light_source - inter.point).normalize();
-        //         let ray_light = Ray { start: inter.point + inter.normal * 0.001, dir: towards_light };
-        //
-        //         let direct_diffuse = if let Some(_in_shadow) = scene.intersects(&ray_light) {
-        //             Color::BLACK
-        //         }
-        //         else {
-        //             let shading = towards_light.dot(inter.normal).max(0.0);
-        //
-        //             Color::splat(shading)
-        //         };
-        //
-        //         if count >= MAX_COUNT { return ( direct_diffuse * material.color) / PI }
-        //
-        //         let indirect_diffuse = {
-        //             let ray = Ray { start: inter.point + inter.normal * 0.01, dir: random_vector_in_hemisphere(inter.normal) };
-        //             let cosine_law = ray.dir.dot(inter.normal);
-        //
-        //             trace( scene, light_source, ray, count + 1 ) * cosine_law
-        //         };
-        //
-        //         ( ( direct_diffuse + indirect_diffuse ) * material.color ) / PI
-        //     }
-        //     else {
-        //         let reflected = ray.dir.reflect(inter.normal);
-        //
-        //         let ray = Ray { start: inter.point + inter.normal * 0.01, dir: reflected };
-        //         let cosine_law = ray.dir.dot(inter.normal);
-        //
-        //         trace( scene, light_source, ray, count + 1 ) * cosine_law * ( material.color.lerp(Color::WHITE, material.reflectivity) )
-        //     }
-        // }
 
         let ( ray, attenuation ) = material.scatter(&ray, &inter);
 
@@ -170,119 +111,107 @@ fn trace(scene: &Bvh, light_source: &Vec3, ray: Ray, count: i32) -> Color {
     }
 }
 
+/// Creates a z-axis aligned rectangle out of two triangles
+fn square( center: Vec3, size: Vec2, orientation: Quat, material: Material ) -> ( Triangle, Triangle ) {
+    let p1 = orientation * Vec3::new(-size.x/2.0, 0.0, -size.y/2.0);
+    let p2 = orientation * Vec3::new( size.x/2.0, 0.0, -size.y/2.0);
+    let p3 = orientation * Vec3::new(-size.x/2.0, 0.0,  size.y/2.0);
+    let p4 = orientation * Vec3::new( size.x/2.0, 0.0,  size.y/2.0);
+
+    let p1 = Vertex { pos: center + p1, tex: Vec2::new(0.0, 1.0), ..Default::default() };
+    let p2 = Vertex { pos: center + p2, tex: Vec2::new(1.0, 1.0), ..Default::default() };
+    let p3 = Vertex { pos: center + p3, tex: Vec2::new(0.0, 0.0), ..Default::default() };
+    let p4 = Vertex { pos: center + p4, tex: Vec2::new(1.0, 0.0), ..Default::default() };
+
+    (
+        Triangle::new( p1, p2, p3, material.clone() ),
+        Triangle::new( p2, p3, p4, material )
+    )
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
 
     let image = Texture::from_file("/home/davawen/Pictures/funi.png")?;
     let earth = Texture::from_file("/home/davawen/Pictures/earth.jpg")?;
-    let normal = Texture::from_file("/home/davawen/Pictures/3314-normal.jpg")?;
     let earth_normal = Texture::from_file("/home/davawen/Pictures/2k_earth_normal_map.tif")?;
-    let metal_normal = Texture::from_file("/home/davawen/Pictures/metal.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
+    let rusty_metal_norm = Texture::from_file("/home/davawen/Pictures/3314-normal.jpg")?;
+    let bumpy_grid_norm = Texture::from_file("/home/davawen/Pictures/metal.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
+    let bumpy_norm = Texture::from_file("/home/davawen/Pictures/bumpy_normal.jpg")?.set_wrapping(TextureWrapping::MirroredRepeat);
+    let scratched_norm = Texture::from_file("/home/davawen/Pictures/reduced.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
 
-    let mut shapes: Vec<Box<dyn Traceable>> = Vec::new();
-    macro_rules! rng {
-        ($e:expr) => {
-            thread_rng().gen_range($e)
-        }
-    }
-
-    for _ in 0..30 {
-        let new_sphere = Sphere {
-            pos: Vec3::new( rng!(-70.0..70.0), 0.0, rng!(30.0..90.0) ),
-            radius: 10.0,
-            material: if random() { Material::new_lambertian(random()) }
-                else { Material::new_metal(random()).set_normal(&normal) }
-        };
-
-        // We know there is no shape other than spheres
-        if !shapes.iter().any(|x| unsafe {
-            let x = x as *const Box<dyn Traceable> as *const Box<Sphere>;
-            (*x).intersects(&new_sphere)
+    let mut shapes: Vec<Box<dyn Traceable>> = vec![
+        Box::new(Plane {
+            pos: Vec3::new(0.0, 0.0, 0.0),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            material: Material::new_metal(Color::new(0.8, 0.4, 0.0)).set_normal(&bumpy_grid_norm).set_size(( 1.0/20.0, 1.0/20.0 )) /* Material::new_lambertian(Color::new( 0.8, 0.4, 0.0 )) */
         })
-        {
-            shapes.push(
-                Box::new( new_sphere )
-            );
+    ];
+
+    macro_rules! square {
+        ($a:expr, $b: expr, $c: expr, $d: expr) => {
+            let p = square($a, $b, $c, $d);
+            shapes.push(Box::new(p.0));
+            shapes.push(Box::new(p.1));
         }
     }
 
-    shapes.push(Box::new(Triangle::new(
-        Vertex { pos: Vec3::new( 0.0, 15.0, 50.0 ), ..Default::default() },
-        Vertex { pos: Vec3::new( 20.0, 10.0, 60.0 ), ..Default::default() },
-        Vertex { pos: Vec3::new( 10.0, 15.0, 55.0 ), ..Default::default() },
-        Material::new_lambertian(Color::GREEN)
-    )));
+    square!(
+        Vec3::new(-30.0, 20.0, 15.0),
+        Vec2::new(40.0, 30.0),
+        Quat::from_rotation_z(PI/2.0),
+        Material::new_lambertian(Color::RED)  
+    );
+    square!(
+        Vec3::new(30.0, 20.0, 15.0),
+        Vec2::new(40.0, 30.0),
+        Quat::from_rotation_z(PI/2.0),
+        Material::new_lambertian(Color::BLUE)  
+    );
+    square!(
+        Vec3::new(0.0, 20.0, 30.0),
+        Vec2::new(60.0, 40.0),
+        Quat::from_rotation_x(PI/2.0),
+        Material::new_lambertian(Color::GREEN)  
+    );
+    square!(
+        Vec3::new(0.0, 40.0, 15.0),
+        Vec2::new(60.0, 30.0),
+        Quat::IDENTITY,
+        Material::new_lambertian(Color::WHITE)  
+    );
 
-    shapes.push(Box::new(Plane {
-        pos: Vec3::new(0.0, -10.0, 0.0),
-        normal: Vec3::new(0.0, 1.0, 0.0),
-        material: Material::new_metal(Color::new(0.8, 0.4, 0.0)).set_normal(&metal_normal) /* Material::new_lambertian(Color::new( 0.8, 0.4, 0.0 )) */
+    shapes.push(Box::new(Sphere {
+        pos: Vec3::new(-15.0, 10.0, 20.0),
+        radius: 12.0,
+        material: Material::new_lambertian(Color::WHITE)
+    }));
+    shapes.push(Box::new(Sphere {
+        pos: Vec3::new(10.0, 10.0, 12.0),
+        radius: 7.0,
+        material: Material::new_lambertian(Color::WHITE)
+    }));
+    shapes.push(Box::new(Sphere {
+        pos: Vec3::new(5.0, 25.0, 10.0),
+        radius: 5.0,
+        material: Material::new_transparent(1.52)
     }));
 
-    shapes.push(Box::new(Triangle::new(
-        Vertex { pos: Vec3::new( 0.0, 20.0, 20.0 ), tex: Vec2::new(0.0, 0.0), ..Default::default() },
-        Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
-        Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
-        Material::default().set_texture(&image)
-    )));
-
-    shapes.push(Box::new(Triangle::new(
-        Vertex { pos: Vec3::new( 0.0, 30.0, 20.0 ), tex: Vec2::new(0.0, 2.0), ..Default::default() },
-        Vertex { pos: Vec3::new( 20.0, 30.0, 20.0 ), tex: Vec2::new(2.0, 2.0), ..Default::default() },
-        Vertex { pos: Vec3::new( 20.0, 20.0, 20.0 ), tex: Vec2::new(2.0, 0.0), ..Default::default() },
-        Material::default().set_texture(&image)
-    )));
-
-    // shapes.push(Box::new(Sphere {
-    //     pos: Vec3::new(-20.0, 0.0, 20.0),
-    //     radius: 15.0,
-    //     material: Material::default().set_texture(&earth)
-    // }));
-    //
-    // shapes.push(Box::new(Sphere {
-    //     pos: Vec3::new(20.0, 0.0, 20.0),
-    //     radius: 15.0,
-    //     material: Material::default().set_texture(&earth).set_normal(&earth_normal)
-    // }));
-
-
-    // shapes.push(Box::new(Sphere {
-    //     pos: Vec3::new(7.0, 25.0, 20.0),
-    //     radius: 5.0,
-    //     material: Material::Transparent { refraction_index: 1.5 }
-    // }));
-
-    // shapes.push(Box::new(Sphere {
-    //     pos: Vec3::new(10.0, 25.0, 20.0),
-    //     radius: -4.0,
-    //     material: Material::Transparent { refraction_index: 1.5 }
-    // }));
-
-    // shapes.push(Box::new({
-    //     let mut t = Triangle::new(
-    //         Vec3::new( 0.0, 30.0, 20.0 ),
-    //         Vec3::new( 20.0, 10.0, 30.0 ),
-    //         Vec3::new( 0.0, 10.0, 20.0 ),
-    //         Material::Transparent { refraction_index: 2.0 }
-    //     );
-    //     t
-    // }));
-
-    let fov = 90.0_f32.to_radians();
+    let fov = 60.0_f32.to_radians();
 
     let camera = Camera {
-        position: Vec3::new(0.0, 20.0, -5.0),
-        orientation: Quat::from_rotation_x(0.5) 
+        position: Vec3::new(20.0, 20.0, -7.0),
+        orientation: Quat::from_rotation_x(0.2) * Quat::from_rotation_y(-0.4)
     };
 
-    let light_source = Vec3::new(0.0, 100.0, 0.0);
+    let light_source = Vec3::new(0.0, 500.0, 15.0);
+
+    const NUM_SAMPLES: usize = 256;
+
+    let mut canvas = RgbImage::new(1920, 1080);
 
     let mut shapes_ref: Vec<_> = shapes.iter().map(Box::as_ref).collect();
 
     let bvh = Bvh::construct(&mut shapes_ref, 0);
-    
-    const NUM_SAMPLES: usize = 256;
-
-    let mut canvas = RgbImage::new(1600, 900);
 
     unsafe {
         let count: AtomicUsize = AtomicUsize::new(0);
@@ -304,7 +233,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             color /= NUM_SAMPLES as f32;
 
             *pixel = color.into();
-            
+
             let val = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if val % count_fraction == 0 {
                 println!("{} % done", val/count_fraction * 10);

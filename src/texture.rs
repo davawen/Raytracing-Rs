@@ -52,10 +52,12 @@ impl Texture {
             TextureWrapping::Repeat => ( u % 1.0, v % 1.0 ),
             TextureWrapping::MirroredRepeat => {
                 let triangle = |x: f32| 2.0 * (x/2.0 - (x/2.0 + 0.5).floor()).abs(); // https://en.wikipedia.org/wiki/Triangle_wave
-                ( triangle(u).clamp(0.0, 1.0), triangle(v).clamp(0.0, 1.0) )
+                ( triangle(u), triangle(v) )
             },
-            TextureWrapping::ClampToEdge => ( u.clamp(0.0, 1.0), v.clamp(0.0, 1.0) )
+            TextureWrapping::ClampToEdge => ( u, v )
         };
+
+        let ( u, v ) = ( u.clamp(0.0, 1.0), v.clamp(0.0, 1.0) );
 
         let ( x, y ) = ( u * (self.width - 1) as f32, (1.0 - v) * (self.height - 1) as f32 );
 

@@ -87,7 +87,7 @@ impl Shape for Plane<'_> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Vertex {
     pub pos: Vec3,
     pub normal: Vec3,

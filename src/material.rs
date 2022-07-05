@@ -2,7 +2,7 @@ use std::{ops::Mul, f32::consts::PI};
 
 use crate::{shape::Ray, intersection::{Inter, Traceable}, reflect::Reflect, texture::Texture};
 use derive_more::{ Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Div, DivAssign };
-use glam::{Vec3, Mat3, Vec3Swizzles};
+use glam::{Vec3, Mat3, Vec3Swizzles, Vec2};
 use image::Rgb;
 use rand::{Rng, prelude::Distribution, distributions::Standard, random};
 
@@ -106,10 +106,11 @@ impl Distribution<Color> for Standard {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Material<'a> {
     texture: Option<&'a Texture>,
     normal_map: Option<&'a Texture>,
+    texture_size: Vec2,
     kind: MaterialKind
 }
 
@@ -126,6 +127,7 @@ impl Default for Material<'_> {
         Material {
             texture: None,
             normal_map: None,
+            texture_size: Vec2::ONE,
             kind: MaterialKind::Lambertian { albedo: Color::WHITE }
         }
     }
@@ -171,22 +173,25 @@ impl<'a> Material<'a> {
         Material { kind: MaterialKind::Transparent { refraction_index }, ..Default::default() }
     }
 
+
     pub fn set_texture(mut self, texture: &'a Texture) -> Self {
         self.texture = Some(texture);
         self
     }
-
     pub fn set_normal(mut self, texture: &'a Texture) -> Self {
         self.normal_map = Some(texture);
         self
     }
-
+    pub fn set_size(mut self, size: ( f32, f32 )) -> Self {
+        self.texture_size = Vec2::new(size.0, size.1);
+        self
+    }
 
     pub fn scatter(&self, ray: &Ray, inter: &Inter<&dyn Traceable>) -> ( Ray, Color) {
         use MaterialKind::*;
 
         let tex = if let Some(image) = self.texture { 
-            let ( u, v ) = inter.shape.sample(inter.point);
+            let Vec2{ x: u, y: v } = inter.shape.sample(inter.point) * self.texture_size;
 
             image.sample(u, v)
         }
@@ -198,7 +203,7 @@ impl<'a> Material<'a> {
         let tangent_matrix = tangent_to_world_matrix(inter.normal);
 
         let normal = if let Some(map) = self.normal_map {
-            let ( u, v ) = inter.shape.sample(inter.point);
+            let Vec2 { x: u, y: v } = inter.shape.sample(inter.point) * self.texture_size;
 
             let normal: Vec3 = map.sample(u, v).into();
             let normal = normal*2.0 - 1.0; // Transform normal from range [0; 1] to [-1; 1]

@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use glam::Vec3;
+use glam::{Vec3, Vec2};
 use num::Zero;
 
 use crate::{shape::*, material::Material};
@@ -84,8 +84,8 @@ where Self: Shape + std::marker::Sync {
     fn ray_intersection(&self, ray: &Ray) -> Option<Inter<&dyn Traceable>>;
 
     /// Returns a texture coordinate according to a point on itself
-    fn sample(&self, _p: Vec3) -> (f32, f32) {
-        ( 0.0, 0.0 )
+    fn sample(&self, _p: Vec3) -> Vec2 {
+        Vec2::ZERO
     }
 }
 
@@ -137,13 +137,13 @@ impl<'a> Traceable for Sphere<'a> {
         })
     }
 
-    fn sample(&self, p: Vec3) -> (f32, f32) {
+    fn sample(&self, p: Vec3) -> Vec2 {
         let dist = p - self.pos;
 
         let u = (-dist.x.atan2(dist.z) / (2.0*PI) + 0.5 + 0.3) % 1.0;
         let v = dist.y / self.radius / 2.0 + 0.5;
 
-        ( u, v )
+        Vec2::new(u, v)
     }
 }
 
@@ -174,8 +174,8 @@ impl Traceable for Plane<'_> {
         }
     }
 
-    fn sample(&self, p: Vec3) -> (f32, f32) {
-        ( p.x / 20.0, p.z / 20.0 )
+    fn sample(&self, p: Vec3) -> Vec2 {
+        Vec2::new( p.x, p.z )
     }
 }
 
@@ -219,11 +219,11 @@ impl<'a> Traceable for Triangle<'a> {
         }
     }
 
-    fn sample(&self, p: Vec3) -> (f32, f32) {
+    fn sample(&self, p: Vec3) -> Vec2 {
         let (w0, w1, w2) = self.barycentric_weigths(p);
 
         let out = w0*self.p0.tex + w1*self.p1.tex + w2*self.p2.tex;
 
-        ( out.x, out.y )
+        Vec2::new( out.x, out.y )
     }
 }
