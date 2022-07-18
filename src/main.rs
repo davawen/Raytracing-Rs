@@ -23,6 +23,8 @@ use crate::{
     material::Material
 };
 
+// 144s
+
 
 #[derive(Debug)]
 struct Camera {
@@ -131,11 +133,11 @@ fn square( center: Vec3, size: Vec2, orientation: Quat, material: Material ) -> 
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    let image = Texture::from_file("/home/davawen/Pictures/funi.png")?;
-    let earth = Texture::from_file("/home/davawen/Pictures/earth.jpg")?;
+    // let image = Texture::from_file("/home/davawen/Pictures/funi.png")?;
+    // let earth = Texture::from_file("/home/davawen/Pictures/earth.jpg")?;
     let earth_normal = Texture::from_file("/home/davawen/Pictures/2k_earth_normal_map.tif")?;
     let rusty_metal_norm = Texture::from_file("/home/davawen/Pictures/3314-normal.jpg")?;
-    let bumpy_grid_norm = Texture::from_file("/home/davawen/Pictures/metal.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
+    let bumpy_grid_norm = Texture::from_file("/home/davawen/Pictures/metal.png")?.set_wrapping(TextureWrapping::Repeat);
     let bumpy_norm = Texture::from_file("/home/davawen/Pictures/bumpy_normal.jpg")?.set_wrapping(TextureWrapping::MirroredRepeat);
     let scratched_norm = Texture::from_file("/home/davawen/Pictures/reduced.png")?.set_wrapping(TextureWrapping::MirroredRepeat);
 
@@ -207,7 +209,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     const NUM_SAMPLES: usize = 256;
 
-    let mut canvas = RgbImage::new(1920, 1080);
+    let mut canvas = RgbImage::new(1200, 900);
 
     let mut shapes_ref: Vec<_> = shapes.iter().map(Box::as_ref).collect();
 

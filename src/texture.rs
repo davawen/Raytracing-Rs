@@ -49,7 +49,10 @@ impl Texture {
     /// Samples the texture from two u,v coordinates ranging from 0 to 1 and interpolates matching pixels with them
     pub fn sample(&self, u: f32, v: f32) -> Color {
         let ( u, v ) = match self.wrapping {
-            TextureWrapping::Repeat => ( u % 1.0, v % 1.0 ),
+            TextureWrapping::Repeat => {
+                let sawtooth = |x: f32| (x + 0.5) - (0.5 + (x + 0.5)).floor() + 0.5;
+                ( sawtooth(u), sawtooth(v) )
+            },
             TextureWrapping::MirroredRepeat => {
                 let triangle = |x: f32| 2.0 * (x/2.0 - (x/2.0 + 0.5).floor()).abs(); // https://en.wikipedia.org/wiki/Triangle_wave
                 ( triangle(u), triangle(v) )
