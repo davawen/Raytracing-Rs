@@ -1,4 +1,4 @@
-use glam::{Vec3, Vec2};
+use glam::{Vec3, Vec2, Mat4};
 
 use crate::material::Material;
 
@@ -101,7 +101,6 @@ pub struct Triangle<'a> {
     pub p2: Vertex,
     pub material: Material<'a>,
 
-    pub normal: Vec3,
     pub edge1: Vec3,
     pub edge2: Vec3,
     pub edge3: Vec3
@@ -122,15 +121,22 @@ impl Shape for Triangle<'_> {
 
 impl<'a> Triangle<'a> {
     pub fn new(p0: Vertex, p1: Vertex, p2: Vertex, material: Material<'a>) -> Self {
-        Triangle { p0, p1, p2, material, normal: Vec3::ZERO, edge1: Vec3::ZERO, edge2: Vec3::ZERO, edge3: Vec3::ZERO}
+        Triangle { p0, p1, p2, material, edge1: Vec3::ZERO, edge2: Vec3::ZERO, edge3: Vec3::ZERO}
             .precompute()
+    }
+
+    pub fn transform(mut self, mat: Mat4) -> Self {
+        self.p0.pos = mat.transform_point3(self.p0.pos);
+        self.p1.pos = mat.transform_point3(self.p1.pos);
+        self.p2.pos = mat.transform_point3(self.p2.pos);
+
+        self.precompute()
     }
 
     fn precompute(mut self) -> Self {
         self.edge1 = self.p1.pos - self.p0.pos;
         self.edge2 = self.p2.pos - self.p0.pos;
         self.edge3 = self.p2.pos - self.p1.pos;
-        self.normal = -self.edge1.cross(self.edge2).normalize();
 
         self
     }

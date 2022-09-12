@@ -47,6 +47,28 @@ impl Color {
     }
 }
 
+impl std::ops::Add<f32> for Color {
+    type Output = Color;
+    fn add(self, rhs: f32) -> Self::Output {
+        Color {
+            r: self.r + rhs,
+            g: self.g + rhs,
+            b: self.b + rhs
+        }
+    }
+}
+
+impl std::ops::Div for Color {
+    type Output = Color;
+    fn div(self, rhs: Self) -> Self::Output {
+        Color {
+            r: self.r / rhs.r,
+            g: self.g / rhs.g,
+            b: self.b / rhs.b
+        }
+    }
+}
+
 impl From<Vec3> for Color {
     fn from(vec: Vec3) -> Self {
         Color::new(vec.x, vec.y, vec.z)
@@ -111,7 +133,7 @@ pub struct Material<'a> {
     texture: Option<&'a Texture>,
     normal_map: Option<&'a Texture>,
     texture_size: Vec2,
-    kind: MaterialKind
+    pub kind: MaterialKind
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -119,7 +141,8 @@ pub struct Material<'a> {
 pub enum MaterialKind {
     Lambertian { albedo: Color },
     Metal { albedo: Color },
-    Transparent { refraction_index: f32 }
+    Transparent { refraction_index: f32 },
+    Emmitive { color: Color, intensity: f32 }
 }
 
 impl Default for Material<'_> {
@@ -172,6 +195,9 @@ impl<'a> Material<'a> {
     pub fn new_transparent(refraction_index: f32) -> Self {
         Material { kind: MaterialKind::Transparent { refraction_index }, ..Default::default() }
     }
+    pub fn new_emmitive(color: Color, intensity: f32) -> Self {
+        Material { kind: MaterialKind::Emmitive { color, intensity }, ..Default::default() }
+    }
 
 
     pub fn set_texture(mut self, texture: &'a Texture) -> Self {
@@ -187,7 +213,7 @@ impl<'a> Material<'a> {
         self
     }
 
-    pub fn scatter(&self, ray: &Ray, inter: &Inter<&dyn Traceable>) -> ( Ray, Color) {
+    pub fn scatter(&self, ray: &Ray, inter: &Inter<&dyn Traceable>) -> ( Option<Ray>, Color) {
         use MaterialKind::*;
 
         let tex = if let Some(image) = self.texture { 
@@ -217,14 +243,15 @@ impl<'a> Material<'a> {
                 let ray = Ray { start: inter.point, dir: random_vector_in_hemisphere(tangent_matrix) };
                 let cosine_law = ray.dir.dot(normal).max(0.0);
 
-                ( ray, albedo * tex * cosine_law )
+                ( Some(ray), albedo * tex * cosine_law )
             },
             Metal { albedo } => {
                 let reflected = ray.dir.reflect(normal);
 
                 let ray = Ray { start: inter.point, dir: reflected };
+                let cosine_law = ray.dir.dot(normal).max(0.0);
 
-                ( ray, albedo * tex )
+                ( Some(ray), albedo * tex * cosine_law )
             },
             Transparent { refraction_index: index } => {
                 let mu = if inter.front { 1.0 / index } else { index };
@@ -247,7 +274,10 @@ impl<'a> Material<'a> {
                     Ray { start: inter.point, dir: refracted_dir.normalize() }
                 };
 
-                ( ray, Color::WHITE )
+                ( Some(ray), Color::WHITE )
+            },
+            Emmitive { color, intensity } => {
+                ( None, color * intensity )
             }
         }
     }

@@ -203,14 +203,19 @@ impl<'a> Traceable for Triangle<'a> {
 
         // At this stage we can compute t to find out where the intersection point is on the line.
         let t = f * self.edge2.dot(q);
-
-        let normal = if ray.dir.dot(self.normal) < 0.0 { self.normal } else { -self.normal };
-
         if t > 0.0 {
+            let point = ray.start + ray.dir * t;
+
+            let (w0, w1, w2) = self.barycentric_weigths(point);
+            let (w0, w1, w2) = (w0.max(0.0), w1.max(0.0), w2.max(0.0));
+            let normal = (self.p0.normal*0.3333 + self.p1.normal*0.33333 + self.p2.normal*0.33333).normalize();
+
+            let (normal, front) = if ray.dir.dot(normal) < 0.0 { ( normal, true ) } else { ( -normal, false ) };
+
             Some(Inter {
-                point: ray.start + ray.dir * t,
+                point,
                 normal,
-                front: true,
+                front,
                 shape: self
             })
         }
